@@ -96,14 +96,43 @@ def text2png(query, drawBox=False):
     draw = ImageDraw.ImageDraw(img)
 
     ## Change the input to multiple lines (add \n to the string) if needed
-    if len(query) > maxWordPerLine:
-        query = "\n".join([query[i:min(len(query), i+maxWordPerLine)] for i in range(0, len(query), maxWordPerLine)])
-        linesNum, wordPerLine = len(query.split("\n")), maxWordPerLine
-    else:
-        linesNum, wordPerLine = 1, len(query)
+# 取得 API 結果
+    result = get_furigana_via_api(query)
+
+    if not result:
+        print("API 讀取失敗")
+        return False
+
+    # 用詞組長度決定換行
+    lines = []
+    current_line = []
+    charCnt = 0
+
+    for surface, furigana, accent in result:
+        # 如果加上這個詞會超過每行最大字數，先換行
+        if charCnt + len(surface) > maxWordPerLine:
+            lines.append(current_line)
+            current_line = []
+            charCnt = 0
+        
+        # 把詞加入當前行
+        current_line.append((surface, furigana, accent))
+        charCnt += len(surface)
+    new_query_lines = []
+    for line in lines:
+        line_str = "".join(surface for surface, _, _ in line)
+        new_query_lines.append(line_str)
+
+    query_with_newlines = "\n".join(new_query_lines)
+    # 把最後一行加入
+    if current_line:
+        lines.append(current_line)
+
+    linesNum = len(new_query_lines)          
+    wordPerLine = max(len(line_str) for line_str in new_query_lines)
     
     ## Get width and height of the image
-    bbox = draw.multiline_textbbox((0, 0), query, font=font, spacing=spacing, align="left")
+    bbox = draw.multiline_textbbox((0, 0), query_with_newlines, font=font, spacing=spacing, align="left")
     furiHeight = int(spacing * furiRatio)
     emptySpace = spacing - furiHeight
     width = bbox[2] - bbox[0] + 2 * boarderSize
@@ -116,10 +145,6 @@ def text2png(query, drawBox=False):
     img = Image.new(mode="RGB", size=(width, height), color=(255, 255, 255))
     d = ImageDraw.Draw(img)
 
-    # Remove "\n" from the query
-    singleLineQuery = query.replace("\n", "")
-    # Get the furigana
-    result = get_furigana_via_api(singleLineQuery)
 
     # Draw the bounding box for each character where its furigana will be
     charCnt = 0
@@ -155,7 +180,7 @@ def text2png(query, drawBox=False):
         charCnt += len(surface)
 
     ## Draw the text
-    d.text((boarderSize, boarderSize+spacing-bbox[1] - emptySpace), query, fill=(0, 0, 0), spacing=spacing, font=font)
+    d.text((boarderSize, boarderSize+spacing-bbox[1] - emptySpace), query_with_newlines, fill=(0, 0, 0), spacing=spacing, font=font)
             
     # Save the image and send
     img.save("./images/furigana.png")
